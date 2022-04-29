@@ -1,0 +1,54 @@
+version: '3.2'
+
+services:
+  dockerd-exporter:
+    image: stefanprodan/caddy
+    networks:
+      - monitoring
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    command: -logtostderr -docker_only
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs
+      - /var/run:/var/run
+      - /sys:/sys
+      - /var/lib/docker:/var/lib/docker
+    networks:
+      - monitoring
+    expose:
+      - 8080
+
+  node-exporter:
+    image: stefanprodan/swarmprom-node-exporter:v0.16.0
+    command: --path.sysfs=/host/sys --path.procfs=/host/proc --collector.textfile.directory=/etc/node-exporter/ --no-collector.ipvs
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - /etc/hostname:/etc/nodename:ro
+      - /etc/hostname:/etc/host_hostname:ro
+    environment:
+      HOST_HOSTNAME: /etc/host_hostname
+    networks:
+      - monitoring
+    expose:
+      - 9100
+
+  prometheus:
+    image: basi/prometheus-swarm:latest
+    command: -config.file=/etc/prometheus/prometheus.yml -storage.local.path=/prometheus -web.console.libraries=/etc/prometheus/console_libraries -web.console.templates=/etc/prometheus/consoles
+    volumes:
+      - /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - monitoring
+    ports:
+      - 9090:9090
+    links:
+      - cadvisor:cadvisor
+      - node-exporter:node-exporter
+      - dockerd-exporter:dockerd-exporter
+    
+networks:
+  monitoring:
