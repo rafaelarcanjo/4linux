@@ -40,3 +40,4 @@ chave.pem
 *.log
 secrets.yaml
 .htpasswd
+ssl_nginx*

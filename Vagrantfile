@@ -49,7 +49,9 @@ Vagrant.configure('2') do |config|
         ansible.extra_vars = {
           GITHUB_TOKEN: vagrant_secrets['GITHUB_TOKEN'],
           GRAFANA_PASS: vagrant_secrets['GRAFANA_PASS'],
-          MYSQL_ROOT_PASSWORD: vagrant_secrets['MYSQL_ROOT_PASSWORD']
+          MYSQL_ROOT_PASSWORD: vagrant_secrets['MYSQL_ROOT_PASSWORD'],
+          PROMETHEUS_PASSWORD: vagrant_secrets['PROMETHEUS_PASSWORD'],
+          CLOUDFLARE_TOKEN: vagrant_secrets['CLOUDFLARE_TOKEN']
         }
       end
     end

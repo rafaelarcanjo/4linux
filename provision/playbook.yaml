@@ -65,8 +65,13 @@
 
     - name: Corrigindo a senha do Prometheus
       shell: |
-        docker run --rm -t httpd:alpine sh -c 'echo -n {{ veeLeeDeishi4die8Vei }} | htpasswd -in admin' > /opt/4linux/provision/monitoring/.htpasswd
+        docker run --rm -t httpd:alpine sh -c 'echo -n {{ PROMETHEUS_PASSWORD }} | htpasswd -in admin' > /opt/4linux/provision/monitoring/.htpasswd
       when: ansible_facts.hostname == 'client'
+
+    - name: Criando os certificados
+      shell: |
+        cd /opt/4linux/provision/ssl && \
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout localhost.key -out localhost.crt -subj "/C=BR/ST=MG/L=Belo Horizonte/O=4Linux/OU=DevOps/CN=libre.tec.br"
 
     - name: Executa o docker-compose da 4Linux, somente no ambiente local
       shell: |
@@ -100,9 +105,9 @@
         grafana_user: admin
         grafana_password: "{{ GRAFANA_PASS }}"
         basic_auth_user: admin
-        basic_auth_password: "{{ veeLeeDeishi4die8Vei }}"
+        basic_auth_password: "{{ PROMETHEUS_PASSWORD }}"
         ds_type: prometheus
-        url: http://192.168.63.254:9090/
+        url: http://192.168.63.254:9091/
       when: ansible_facts.hostname == 'server'
 
     - name: SERVER | Baixando os dashboards
@@ -144,3 +149,12 @@
       with_fileglob:
         - '/tmp/*.json'
       when: ansible_facts.hostname == 'server'
+
+    - name: Criando os registros na CloudFlare
+      cloudflare_dns:
+        zone: libre.tec.br
+        record: "{{ ansible_facts.hostname }}.4linux"
+        type: A
+        value: "{{ hostvars[{{ ansible_facts.hostname }}]['ansible_ssh_host'] }}"
+        api_token: "{{ CLOUDFLARE_TOKEN }}"
+      when: ansible_facts.virtualization_type != 'virtualbox'        
