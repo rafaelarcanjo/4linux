@@ -38,59 +38,89 @@
         name: vagrant
         group: docker
 
-    - name: CLIENT | Copia os arquivos para /opt
-      shell: |
-        cp -arv /vagrant/provision/monitoring /opt/monitoring
+    - name: Git checkout
+      git:
+        repo: https://{{ GITHUB_TOKEN }}@github.com/rafaelarcanjo/4linux.git
+        dest: /opt/4linux
+
+    - name: Corringindo a senha do Grafana
+      replace:
+        path: "/opt/4linux/provision/grafana/docker-compose.yaml"
+        regexp: 'GRAFANA_PASS'
+        replace: "{{ GRAFANA_PASS }}"
+      when: ansible_facts.hostname == 'server'
+
+    - name: Corringindo a senha do MySQL
+      replace:
+        path: "/opt/4linux/provision/monitoring/docker-compose.yaml"
+        regexp: 'MYSQL_ROOT_PASSWORD'
+        replace: "{{ MYSQL_ROOT_PASSWORD }}"
       when: ansible_facts.hostname == 'client'
+    
+    # - debug: "var=ansible_facts.eth1"
+    # - meta: end_play
+
+    - name: Executa o docker-compose da 4Linux, somente no ambiente local
+      shell: |
+        cd /opt/4linux/app-devops/ && docker-compose up -d
+      when: ansible_facts.eth1.ipv4.address == "192.168.63.254"
 
     - name: CLIENT | Executa o Docker Compose
       shell: |
-        cd /opt/app-devops/ && docker-compose up -d 
-        cd /opt/monitoring/ && docker-compose up -d
+        cd /opt/4linux/provision/monitoring/ && docker-compose up -d
       when: ansible_facts.hostname == 'client'
-
-    - name: SERVER | Copia os arquivos para /opt
-      shell: |
-        cp -arv /vagrant/provision/grafana /opt
-      when: ansible_facts.hostname == 'server'
 
     - name: SERVER | Executa o Docker Compose
       shell: |
-        cd /opt/grafana/ && docker-compose up -d        
+        cd /opt/4linux/provision/grafana/ && docker-compose up -d        
       when: ansible_facts.hostname == 'server'
 
-    - name: Adicionando o Prometheus 
+    - name: SERVER | Aguardando o Grafana
+      uri:
+        url: "http://localhost:3000/login"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 60
+      delay: 1
+      when: ansible_facts.hostname == 'server'
+
+    - name: SERVER | Adicionando o Prometheus 
       grafana_datasource:
         name: DS_PROMETHEUS
         grafana_url: http://localhost:3000
         grafana_user: admin
-        grafana_password: oheehel4eiCaBuphouToovue9aisachi
+        grafana_password: "{{ GRAFANA_PASS }}"
         ds_type: prometheus
         url: http://192.168.63.254:9090/
       when: ansible_facts.hostname == 'server'
 
-    - name: Baixando os dashboards
+    - name: SERVER | Baixando os dashboards
       uri:
         url: "{{ item.url }}"
         dest: "/tmp/{{ item.dashboard }}"
       loop:
         - { url: 'https://grafana.com/api/dashboards/193/revisions/1/download', dashboard: '193.json' }
+        - { url: 'https://grafana.com/api/dashboards/8564/revisions/10/download', dashboard: '8564.json' }
+        - { url: 'https://grafana.com/api/dashboards/10180/revisions/1/download', dashboard: '10180.json' }
+        - { url: 'https://grafana.com/api/dashboards/12708/revisions/1/download', dashboard: '12708.json' }
+        - { url: 'https://grafana.com/api/dashboards/10991/revisions/11/download', dashboard: '10991.json' }
       when: ansible_facts.hostname == 'server'
 
-    - name: Corringindo os datasources       
+    - name: SERVER | Corringindo os datasources       
       replace:
-        path: "/tmp/{{ item.dashboard }}"
-        regexp: "{{ item.regexp }}"
-        replace: "{{ item.datasource }}"
-      loop:
-        - { dashboard: '193.json', regexp: '"(?:\${)?DS_[A-Z0-9_-]+(?:})?"', datasource: '"DS_PROMETHEUS"'}
+        path: "{{ item }}"
+        regexp: '"(?:\${)?DS_[A-Z0-9_-]+(?:})?"'
+        replace: '"DS_PROMETHEUS"'
+      with_fileglob:
+        - "/tmp/*.json"
       when: ansible_facts.hostname == 'server'
 
-    - name: Import grafana dashboards through API
+    - name: SERVER | Importando os dashboards
       uri:
         url: "http://localhost:3000/api/dashboards/db"
         user: "admin"
-        password: "oheehel4eiCaBuphouToovue9aisachi"
+        password: "{{ GRAFANA_PASS }}"
         force_basic_auth: true
         method: POST
         body_format: json
@@ -100,7 +130,7 @@
             "overwrite": true,
             "message": "Updated by ansible"
           }
-      # no_log: true
+      no_log: true
       with_fileglob:
         - "/tmp/*.json"
       when: ansible_facts.hostname == 'server'

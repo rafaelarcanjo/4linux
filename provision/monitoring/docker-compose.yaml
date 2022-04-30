@@ -5,6 +5,9 @@ services:
     image: stefanprodan/caddy
     networks:
       - monitoring
+    restart: unless-stopped
+    expose:
+      - 9180
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor
@@ -19,36 +22,88 @@ services:
       - monitoring
     expose:
       - 8080
+    restart: unless-stopped
 
   node-exporter:
-    image: stefanprodan/swarmprom-node-exporter:v0.16.0
-    command: --path.sysfs=/host/sys --path.procfs=/host/proc --collector.textfile.directory=/etc/node-exporter/ --no-collector.ipvs
+    image: quay.io/prometheus/node-exporter:latest
+    command:
+      - '--path.rootfs=/host'
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
       - /etc/hostname:/etc/nodename:ro
       - /etc/hostname:/etc/host_hostname:ro
+      - /:/host:ro,rslave
+    restart: unless-stopped
     environment:
       HOST_HOSTNAME: /etc/host_hostname
     networks:
       - monitoring
     expose:
-      - 9100
+      - 9100  
 
   prometheus:
     image: basi/prometheus-swarm:latest
     command: -config.file=/etc/prometheus/prometheus.yml -storage.local.path=/prometheus -web.console.libraries=/etc/prometheus/console_libraries -web.console.templates=/etc/prometheus/consoles
     volumes:
-      - /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - monitoring
+      - app-devops
     ports:
       - 9090:9090
     links:
       - cadvisor:cadvisor
       - node-exporter:node-exporter
       - dockerd-exporter:dockerd-exporter
+      - mysql-exporter:mysql-exporter
+
+  mysql-exporter:
+    image: prom/mysqld-exporter
+    expose:
+      - 9104
+    networks:
+      - monitoring
+      - app-devops
+    environment:
+      - DATA_SOURCE_NAME=root:MYSQL_ROOT_PASSWORD@(mysql:3306)/
+    restart: unless-stopped
+
+  process-exporter:
+    image: ncabatoff/process-exporter
+    expose:
+      - 9256
+    volumes:
+      - /proc:/host/proc
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - 80:80
+      - 443:443
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - app-devops
+      - monitoring
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter
+    restart: unless-stopped
+    networks:
+      - monitoring
+    expose: 
+      - 9113
+    command: -nginx.scrape-uri=http://nginx:8080/Paipai0uuLeisach
     
 networks:
   monitoring:
+
+  app-devops:
+    external:
+      name: app-devops_default

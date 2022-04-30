@@ -37,3 +37,5 @@ inventory.ini
 id_rsa
 chave.pem
 .vagrant
+*.log
+secrets.yaml

@@ -3,6 +3,12 @@
 
 VAGRANT_DISABLE_VBOXSYMLINKCREATE=1
 
+require 'yaml'
+
+current_dir     = File.dirname(File.expand_path(__FILE__))
+secrets         = YAML.load_file("#{current_dir}/secrets.yaml")
+vagrant_secrets = secrets['secrets'][secrets['secrets']['use']]
+
 vms = {
   'server' => {
     'memory'    => '2048', 
@@ -40,6 +46,11 @@ Vagrant.configure('2') do |config|
       k.vm.provision 'ansible_local' do |ansible|
         ansible.playbook = "#{conf['provision']}"
         ansible.compatibility_mode = '2.0'
+        ansible.extra_vars = {
+          GITHUB_TOKEN: vagrant_secrets['GITHUB_TOKEN'],
+          GRAFANA_PASS: vagrant_secrets['GRAFANA_PASS'],
+          MYSQL_ROOT_PASSWORD: vagrant_secrets['MYSQL_ROOT_PASSWORD']
+        }
       end
     end
   end
