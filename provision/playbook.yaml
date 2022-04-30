@@ -13,17 +13,20 @@
         - git
         - apt-transport-https
         - software-properties-common
-        - gnupg2        
+        - gnupg2
+      when: ansible_facts.virtualization_type == 'virtualbox'
 
     - name: Adiciona key do repositório
       apt_key:
         url: https://download.docker.com/linux/debian/gpg
         state: present
+      when: ansible_facts.virtualization_type == 'virtualbox'
 
     - name: Adiciona repositorio oficial do Docker
       apt_repository:
         repo: deb [arch=amd64] https://download.docker.com/linux/debian stretch stable
         state: present
+      when: ansible_facts.virtualization_type == 'virtualbox'
         
     - name: Instala Docker
       apt:
@@ -32,38 +35,43 @@
       loop:
         - docker-ce
         - docker-compose
+      when: ansible_facts.virtualization_type == 'virtualbox'
   
     - name: Adiciona o usuario vagrant no grupo docker
       user:
         name: vagrant
         group: docker
+      when: ansible_facts.virtualization_type == 'virtualbox'
 
     - name: Git checkout
       git:
         repo: https://{{ GITHUB_TOKEN }}@github.com/rafaelarcanjo/4linux.git
         dest: /opt/4linux
+        force: yes
 
     - name: Corringindo a senha do Grafana
       replace:
-        path: "/opt/4linux/provision/grafana/docker-compose.yaml"
-        regexp: 'GRAFANA_PASS'
-        replace: "{{ GRAFANA_PASS }}"
+        path: '/opt/4linux/provision/grafana/docker-compose.yaml'
+        regexp: 'GF_SECURITY_ADMIN_PASSWORD=GF_SECURITY_ADMIN_PASSWORD'
+        replace: "GF_SECURITY_ADMIN_PASSWORD={{ GRAFANA_PASS }}"
       when: ansible_facts.hostname == 'server'
 
     - name: Corringindo a senha do MySQL
       replace:
-        path: "/opt/4linux/provision/monitoring/docker-compose.yaml"
+        path: '/opt/4linux/provision/monitoring/docker-compose.yaml'
         regexp: 'MYSQL_ROOT_PASSWORD'
         replace: "{{ MYSQL_ROOT_PASSWORD }}"
       when: ansible_facts.hostname == 'client'
-    
-    # - debug: "var=ansible_facts.eth1"
-    # - meta: end_play
+
+    - name: Corrigindo a senha do Prometheus
+      shell: |
+        docker run --rm -t httpd:alpine sh -c 'echo -n {{ veeLeeDeishi4die8Vei }} | htpasswd -in admin' > /opt/4linux/provision/monitoring/.htpasswd
+      when: ansible_facts.hostname == 'client'
 
     - name: Executa o docker-compose da 4Linux, somente no ambiente local
       shell: |
         cd /opt/4linux/app-devops/ && docker-compose up -d
-      when: ansible_facts.eth1.ipv4.address == "192.168.63.254"
+      when: ansible_facts.eth1.ipv4.address == '192.168.63.254'
 
     - name: CLIENT | Executa o Docker Compose
       shell: |
@@ -77,7 +85,7 @@
 
     - name: SERVER | Aguardando o Grafana
       uri:
-        url: "http://localhost:3000/login"
+        url: 'http://localhost:3000/login'
         status_code: 200
       register: result
       until: result.status == 200
@@ -91,6 +99,8 @@
         grafana_url: http://localhost:3000
         grafana_user: admin
         grafana_password: "{{ GRAFANA_PASS }}"
+        basic_auth_user: admin
+        basic_auth_password: "{{ veeLeeDeishi4die8Vei }}"
         ds_type: prometheus
         url: http://192.168.63.254:9090/
       when: ansible_facts.hostname == 'server'
@@ -119,7 +129,7 @@
     - name: SERVER | Importando os dashboards
       uri:
         url: "http://localhost:3000/api/dashboards/db"
-        user: "admin"
+        user: 'admin'
         password: "{{ GRAFANA_PASS }}"
         force_basic_auth: true
         method: POST
@@ -132,5 +142,5 @@
           }
       no_log: true
       with_fileglob:
-        - "/tmp/*.json"
+        - '/tmp/*.json'
       when: ansible_facts.hostname == 'server'

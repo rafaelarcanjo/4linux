@@ -39,3 +39,4 @@ chave.pem
 .vagrant
 *.log
 secrets.yaml
+.htpasswd
