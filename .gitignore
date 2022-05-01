@@ -39,5 +39,6 @@ chave.pem
 .vagrant
 *.log
 secrets.yaml
+secrets.json
 .htpasswd
 ssl_nginx*

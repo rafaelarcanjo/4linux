@@ -4,6 +4,7 @@
   become_user: root
   become_method: sudo
   gather_facts: true
+  any_errors_fatal: true
   tasks:
     - name: Instala pacotes base
       apt:
@@ -13,29 +14,29 @@
         - git
         - apt-transport-https
         - software-properties-common
-        - gnupg2
-      when: ansible_facts.virtualization_type == 'virtualbox'
+        - gnupg2      
 
     - name: Adiciona key do repositório
       apt_key:
         url: https://download.docker.com/linux/debian/gpg
         state: present
-      when: ansible_facts.virtualization_type == 'virtualbox'
+      when: ansible_facts.hostname != 'processo-seletivo-1-monitoramento-client'
 
     - name: Adiciona repositorio oficial do Docker
       apt_repository:
         repo: deb [arch=amd64] https://download.docker.com/linux/debian stretch stable
         state: present
-      when: ansible_facts.virtualization_type == 'virtualbox'
+        update_cache: yes
+      when: ansible_facts.hostname != 'processo-seletivo-1-monitoramento-client'
         
     - name: Instala Docker
       apt:
         name: "{{ item }}"
-        state: present
+        state: present        
       loop:
         - docker-ce
         - docker-compose
-      when: ansible_facts.virtualization_type == 'virtualbox'
+      when: ansible_facts.hostname != 'processo-seletivo-1-monitoramento-client'
   
     - name: Adiciona o usuario vagrant no grupo docker
       user:
@@ -54,19 +55,22 @@
         path: '/opt/4linux/provision/grafana/docker-compose.yaml'
         regexp: 'GF_SECURITY_ADMIN_PASSWORD=GF_SECURITY_ADMIN_PASSWORD'
         replace: "GF_SECURITY_ADMIN_PASSWORD={{ GRAFANA_PASS }}"
-      when: ansible_facts.hostname == 'server'
+      when: ansible_facts.hostname == 'server' or
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-server'
 
     - name: Corringindo a senha do MySQL
       replace:
         path: '/opt/4linux/provision/monitoring/docker-compose.yaml'
         regexp: 'MYSQL_ROOT_PASSWORD'
         replace: "{{ MYSQL_ROOT_PASSWORD }}"
-      when: ansible_facts.hostname == 'client'
+      when: ansible_facts.hostname == 'client' or 
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-client'
 
     - name: Corrigindo a senha do Prometheus
       shell: |
         docker run --rm -t httpd:alpine sh -c 'echo -n {{ PROMETHEUS_PASSWORD }} | htpasswd -in admin' > /opt/4linux/provision/monitoring/.htpasswd
-      when: ansible_facts.hostname == 'client'
+      when: ansible_facts.hostname == 'client' or
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-client'
 
     - name: Criando os certificados
       shell: |
@@ -76,17 +80,21 @@
     - name: Executa o docker-compose da 4Linux, somente no ambiente local
       shell: |
         cd /opt/4linux/app-devops/ && docker-compose up -d
-      when: ansible_facts.eth1.ipv4.address == '192.168.63.254'
-
+      when: 
+        - ansible_facts.virtualization_type != 'virtualbox'
+        - ansible_facts.hostname == 'client'
+        
     - name: CLIENT | Executa o Docker Compose
       shell: |
         cd /opt/4linux/provision/monitoring/ && docker-compose up -d
-      when: ansible_facts.hostname == 'client'
+      when: ansible_facts.hostname == 'client' or
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-client'
 
     - name: SERVER | Executa o Docker Compose
       shell: |
         cd /opt/4linux/provision/grafana/ && docker-compose up -d        
-      when: ansible_facts.hostname == 'server'
+      when: ansible_facts.hostname == 'server' or
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-server'
 
     - name: SERVER | Aguardando o Grafana
       uri:
@@ -96,7 +104,8 @@
       until: result.status == 200
       retries: 60
       delay: 1
-      when: ansible_facts.hostname == 'server'
+      when: ansible_facts.hostname == 'server' or
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-server'
 
     - name: SERVER | Adicionando o Prometheus 
       grafana_datasource:
@@ -107,20 +116,37 @@
         basic_auth_user: admin
         basic_auth_password: "{{ PROMETHEUS_PASSWORD }}"
         ds_type: prometheus
-        url: http://192.168.63.254:9091/
-      when: ansible_facts.hostname == 'server'
+        ds_url: https://client-4linux.libre.tec.br/prometheus
+      when: ansible_facts.hostname == 'server' or
+            ansible_facts.hostname == 'processo-seletivo-1-monitoramento-server'
 
-    - name: SERVER | Baixando os dashboards
+    - name: Criando os registros na CloudFlare
+      cloudflare_dns:
+        zone: libre.tec.br
+        record: "{{ inventory_hostname }}-4linux"
+        type: A
+        value: "{{ hostvars[inventory_hostname].ansible_ssh_host }}"
+        api_token: "{{ CLOUDFLARE_TOKEN }}"
+        proxied: yes
+      when: ansible_facts.virtualization_type != 'virtualbox'
+      tags: cloudflare
+    
+- hosts: localhost
+  gather_facts: false
+  any_errors_fatal: true
+  become: false
+  connection: local
+  tasks:
+    - name: Baixando os dashboards
       uri:
         url: "{{ item.url }}"
         dest: "/tmp/{{ item.dashboard }}"
       loop:
-        - { url: 'https://grafana.com/api/dashboards/193/revisions/1/download', dashboard: '193.json' }
-        - { url: 'https://grafana.com/api/dashboards/8564/revisions/10/download', dashboard: '8564.json' }
-        - { url: 'https://grafana.com/api/dashboards/10180/revisions/1/download', dashboard: '10180.json' }
-        - { url: 'https://grafana.com/api/dashboards/12708/revisions/1/download', dashboard: '12708.json' }
-        - { url: 'https://grafana.com/api/dashboards/10991/revisions/11/download', dashboard: '10991.json' }
-      when: ansible_facts.hostname == 'server'
+        - { url: 'https://grafana.com/api/dashboards/193/revisions/1/download', dashboard: '_grafana-193.json' }
+        - { url: 'https://grafana.com/api/dashboards/8564/revisions/10/download', dashboard: '_grafana-8564.json' }
+        - { url: 'https://grafana.com/api/dashboards/10180/revisions/1/download', dashboard: '_grafana-10180.json' }
+        - { url: 'https://grafana.com/api/dashboards/12708/revisions/1/download', dashboard: '_grafana-12708.json' }
+        - { url: 'https://grafana.com/api/dashboards/10991/revisions/11/download', dashboard: '_grafana-10991.json' }
 
     - name: SERVER | Corringindo os datasources       
       replace:
@@ -128,12 +154,11 @@
         regexp: '"(?:\${)?DS_[A-Z0-9_-]+(?:})?"'
         replace: '"DS_PROMETHEUS"'
       with_fileglob:
-        - "/tmp/*.json"
-      when: ansible_facts.hostname == 'server'
+        - "/tmp/_grafana*.json"
 
     - name: SERVER | Importando os dashboards
       uri:
-        url: "http://localhost:3000/api/dashboards/db"
+        url: "https://server-4linux.libre.tec.br/api/dashboards/db"
         user: 'admin'
         password: "{{ GRAFANA_PASS }}"
         force_basic_auth: true
@@ -145,16 +170,7 @@
             "overwrite": true,
             "message": "Updated by ansible"
           }
-      no_log: true
+      # no_log: true
       with_fileglob:
-        - '/tmp/*.json'
-      when: ansible_facts.hostname == 'server'
-
-    - name: Criando os registros na CloudFlare
-      cloudflare_dns:
-        zone: libre.tec.br
-        record: "{{ ansible_facts.hostname }}.4linux"
-        type: A
-        value: "{{ hostvars[{{ ansible_facts.hostname }}]['ansible_ssh_host'] }}"
-        api_token: "{{ CLOUDFLARE_TOKEN }}"
-      when: ansible_facts.virtualization_type != 'virtualbox'        
+        - '/tmp/_grafana*.json'
+  tags: grafana
