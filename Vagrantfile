@@ -47,7 +47,6 @@ Vagrant.configure('2') do |config|
         ansible.playbook = "#{conf['provision']}"
         ansible.compatibility_mode = '2.0'
         ansible.extra_vars = {
-          GITHUB_TOKEN: vagrant_secrets['GITHUB_TOKEN'],
           GRAFANA_PASS: vagrant_secrets['GRAFANA_PASS'],
           MYSQL_ROOT_PASSWORD: vagrant_secrets['MYSQL_ROOT_PASSWORD'],
           PROMETHEUS_PASSWORD: vagrant_secrets['PROMETHEUS_PASSWORD'],

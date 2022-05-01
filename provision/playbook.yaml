@@ -46,7 +46,7 @@
 
     - name: Git checkout
       git:
-        repo: https://{{ GITHUB_TOKEN }}@github.com/rafaelarcanjo/4linux.git
+        repo: https://github.com/rafaelarcanjo/4linux.git
         dest: /opt/4linux
         force: yes
 
