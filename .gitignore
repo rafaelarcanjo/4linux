@@ -42,3 +42,4 @@ secrets.yaml
 secrets.json
 .htpasswd
 ssl_nginx*
+README.pdf
